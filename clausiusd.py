@@ -7,14 +7,21 @@ __email__ = "philippum@gmail.com"
 __version__ = "0.1"
 __contact__ = "https://github.com/ifoo/clausius"
 
-import sys, os, argparse, ConfigParser as cp, syslog, atexit, signal, time, popen2
+import sys, os, argparse, ConfigParser as cp, syslog, atexit, signal, time, popen2, datetime
 
 g_default_config_file = "/etc/clausiusd/clausiusd.conf"
 
 g_default_config = {    "pidfile": "/var/run/clausiusd.pid",
                         "samplerate": 1,
                         "datafile": "/var/cache/clausiusd.data",
-                        "storeinterval": 10}
+                        "storeinterval": 10,
+                        "unit": "celsius"}
+
+g_data_sources = (  ("/proc/acpi/thermal_zone/THM0/temperature", lambda x: float(x.lstrip('temperature :').rstrip(' C'))),
+                    ("/proc/acpi/thermal_zone/THRM/temperature", lambda x: float(x.lstrip('temperature :').rstrip(' C'))),
+                    ("/proc/acpi/thermal_zone/THR1/temperature", lambda x: float(x.lstrip('temperature :').rstrip(' C'))),
+                    ("/sys/devices/LNXSYSTM:00/LNXTHERM:00/LNXTHERM:01/thermal_zone/temp", lambda x: float(x.rstrip('000'))),
+                    ("/sys/bus/acpi/devices/LNXTHERM:00/thermal_zone/temp", lambda x: float(x.rstrip('000'))))
 
 # daemon code from http://www.jejik.com/articles/2007/02/a_simple_unix_linux_daemon_in_python/
 # and http://code.activestate.com/recipes/278731-creating-a-daemon-the-python-way/
@@ -25,6 +32,7 @@ class Clausiusd(object):
         self.__samplerate = None
         self.__datafile = None
         self.__store_interval = None
+        self.__unit = None
         try:
             self.__read_config()
         except:
@@ -56,6 +64,7 @@ class Clausiusd(object):
         self.__samplerate = cfg_parser.get("clausiusd", "samplerate")
         self.__datafile = cfg_parser.get("clausiusd", "datafile")
         self.__store_interval = cfg_parser.get("clausiusd", "storeinterval")
+        self.__unit = cfg_parser.get("clausiusd", "unit")
         
     def __daemonize(self):
         try:
@@ -138,8 +147,26 @@ class Clausiusd(object):
         
     def run(self):
         syslog.syslog("clasiusd running ....")
-        while True:
-            time.sleep(1)
+        data_source = self.__scan_data_sources()
+        syslog.syslog("reading")
+        if data_source:
+            syslog.syslog("data_source: %s" % (data_source[0]))
+            while True:
+                self.__store_data_point(self.__get_data_point(data_source))
+                time.sleep(int(self.__samplerate))
+                # TODO: implement store_interval
+
+    def __get_data_point(self, source):
+        return source[1](open(source[0], "r").read().strip())
+
+    def __store_data_point(self, data_point):
+        os.fdopen(os.open(self.__datafile, os.O_RDWR | os.O_CREAT, 0644), "a+").write("%f %c %s\n" % (data_point, self.__unit[0], datetime.datetime.now()))
+
+    def __scan_data_sources(self):
+        for source in g_data_sources:
+            if os.path.isfile(source[0]):
+                return source
+        return None
 
 def main():
     parser = argparse.ArgumentParser(description="A daemon for CPU temperature monitoring.", epilog="%s (%s). Visit %s for more information." % (__copyright__, __email__, __contact__))
