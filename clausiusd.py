@@ -1,3 +1,27 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+#  clausiusd.py
+#  
+#  Copyright 2012 Philip Pum <philippum@gmail.com>
+#  
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#  
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#  
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+#  MA 02110-1301, USA.
+#  
+#  
+
 __author__ = "Philip Pum"
 __copyright__ = "Copyright (C) 2012 Philip Pum"
 __credits__ = "Scott Williams"
@@ -7,7 +31,7 @@ __email__ = "philippum@gmail.com"
 __version__ = "0.1"
 __contact__ = "https://github.com/ifoo/clausius"
 
-import sys, os, argparse, ConfigParser as cp, syslog, atexit, signal, time, popen2, datetime
+import sys, os, argparse, ConfigParser as cp, syslog, atexit, signal, time, popen2, struct
 
 g_default_config_file = "/etc/clausiusd/clausiusd.conf"
 
@@ -160,7 +184,8 @@ class Clausiusd(object):
         return source[1](open(source[0], "r").read().strip())
 
     def __store_data_point(self, data_point):
-        os.fdopen(os.open(self.__datafile, os.O_RDWR | os.O_CREAT, 0644), "a+").write("%f %c %s\n" % (data_point, self.__unit[0], datetime.datetime.now()))
+        packed_data = struct.pack("!BBcf", int(data_point), int((data_point - int(data_point)) * 100), self.__unit[0], time.time())
+        os.fdopen(os.open(self.__datafile, os.O_RDWR | os.O_CREAT, 0644), "ab").write(packed_data)
 
     def __scan_data_sources(self):
         for source in g_data_sources:
